@@ -1,3 +1,1 @@
-# context-passing
-
-A description of this package.
+See https://forums.swift.org/t/the-context-passing-problem/39162
