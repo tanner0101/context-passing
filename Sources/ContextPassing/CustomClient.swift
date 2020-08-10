@@ -27,7 +27,7 @@ extension Client {
         CustomClient(client: self, loggerOverride: logger)
     }
 
-    func tracing(to baggage: BaggageContext) -> Client {
+    func tracing(with baggage: BaggageContext) -> Client {
         CustomClient(client: self, baggageOverride: baggage)
     }
 }

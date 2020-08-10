@@ -31,7 +31,7 @@ final class ContextPassingTests: XCTestCase {
         let client = conn
             .logging(to: clientLogs.logger)
             .eventLoop(prefer: .delegate(on: clientLoop))
-            .tracing(to: clientBaggage)
+            .tracing(with: clientBaggage)
 
         // MARK: Using client
         do {
@@ -87,7 +87,7 @@ final class ContextPassingTests: XCTestCase {
         // MARK: Baggage
         var test = BaggageContext()
         test[Foo.self] = "bar"
-        try db.tracing(to: test).ping().wait()
+        try db.tracing(with: test).ping().wait()
         XCTAssertEqual(logs.read(), [
             "connection-pool.request",
             "connection-pool.reuse",
