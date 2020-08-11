@@ -2,25 +2,46 @@ import XCTest
 import NIO
 import Logging
 import Baggage
-@testable import ContextPassing
+import ContextPassing
 
 final class ContextPassingTests: XCTestCase {
     func testConnection() throws {
+        // Loggers
+        let logs = TestLogHandler()
         let connLogs = TestLogHandler()
-        let conn = Connection(
-            channel: EmbeddedChannel(),
-            logger: connLogs.logger,
-            baggage: BaggageContext()
-        )
-        XCTAssertEqual(connLogs.read(), [
-            "connection.init"
+        defer {
+            XCTAssertEqual(connLogs.read(), [
+                "Connection was not closed before deinit."
+            ])
+        }
+
+        // Baggage
+        var fooBaggage = BaggageContext()
+        fooBaggage[Foo.self] = "bar"
+
+        // Create connection
+        let conn = try Connection.connect(
+            to: .init(.init()),
+            logger: logs.logger,
+            baggage: fooBaggage,
+            connectionLogger: connLogs.logger
+        ).wait()
+        XCTAssertEqual(logs.read(), [
+            "connection.init",
+            "connection.init.trace: foo"
         ])
 
         // MARK: Using connection directly
         do {
             let res = conn.ping()
-            XCTAssert(res.eventLoop === conn.channel.eventLoop)
+            XCTAssert(res.eventLoop === conn.eventLoop)
             try res.wait()
+            // all logs went to client logger
+            XCTAssertEqual(connLogs.read(), [
+                "connection.request: ping",
+                "connection.response: pong",
+                "connection.send.trace: "
+            ])
         }
 
         // MARK: Creating client with context
@@ -42,7 +63,7 @@ final class ContextPassingTests: XCTestCase {
             XCTAssertEqual(clientLogs.read(), [
                 "connection.request: ping",
                 "connection.response: pong",
-                "connection.trace: foo" // has foo baggage key
+                "connection.send.trace: foo" // has foo baggage key
             ])
             // no logs went to conn logger
             XCTAssertEqual(connLogs.read(), [])
@@ -50,50 +71,67 @@ final class ContextPassingTests: XCTestCase {
     }
 
     func testConnectionPool() throws {
+        // MARK: Loggers
+        let logs = TestLogHandler()
+        let poolLogs = TestLogHandler()
+        defer {
+            XCTAssertEqual(poolLogs.read(), [
+                "Pool was not closed before deinit."
+            ])
+        }
+
+        // MARK: Baggage
+        var fooBaggage = BaggageContext()
+        fooBaggage[Foo.self] = "bar"
+
+        // MARK: Init Pool
         let pool = ConnectionPool(
             eventLoopGroup: EmbeddedEventLoop(),
-            logger: .init(label: "pool"),
-            baggage: .init()
+            connectLogger: logs.logger,
+            connectBaggage: fooBaggage,
+            logger: poolLogs.logger
         )
+        XCTAssertEqual(poolLogs.read(), [])
+        XCTAssertEqual(logs.read(), [
+            "connection-pool.init",
+            "connection-pool.init.trace: foo"
+        ])
 
-        let logs = TestLogHandler()
+        // MARK: Logs new connection w/ baggage
         let db = pool.logging(to: logs.logger)
-
-        // MARK: Logs new connection
         XCTAssertEqual(logs.read(), [])
-        try db.ping().wait()
+        try db.tracing(with: fooBaggage).ping().wait()
         // all logs going to test logger
         XCTAssertEqual(logs.read(), [
             "connection-pool.request",
             "connection-pool.new", // new connection
             "connection.init",
+            "connection.init.trace: foo", // foo in init
             "connection.request: ping",
             "connection.response: pong",
-            "connection.trace: ",
+            "connection.send.trace: foo", // foo in send
             "connection-pool.release",
         ])
 
-        // MARK: Logs reuse connection
+        // MARK: Logs reuse connection w/o baggage
         try db.ping().wait()
         XCTAssertEqual(logs.read(), [
             "connection-pool.request",
             "connection-pool.reuse", // connection is reused
             "connection.request: ping",
             "connection.response: pong",
-            "connection.trace: ",
+            "connection.send.trace: ", // baggage gone
             "connection-pool.release",
         ])
 
         // MARK: Baggage
-        var test = BaggageContext()
-        test[Foo.self] = "bar"
-        try db.tracing(with: test).ping().wait()
+        try db.tracing(with: fooBaggage).ping().wait()
         XCTAssertEqual(logs.read(), [
             "connection-pool.request",
             "connection-pool.reuse",
             "connection.request: ping",
             "connection.response: pong",
-            "connection.trace: foo", // has "foo" key
+            "connection.send.trace: foo", // foo in send
             "connection-pool.release",
         ])
 
@@ -109,7 +147,7 @@ final class ContextPassingTests: XCTestCase {
             "connection-pool.reuse",
             "connection.request: ping",
             "connection.response: pong",
-            "connection.trace: ",
+            "connection.send.trace: ",
             "connection-pool.release",
         ])
     }

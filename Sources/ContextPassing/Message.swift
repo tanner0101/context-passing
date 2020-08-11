@@ -1,3 +1,3 @@
-enum Message {
+public enum Message {
     case ping, pong
 }

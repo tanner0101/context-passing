@@ -1,6 +1,6 @@
 import NIO
 
-enum EventLoopPreference {
+public enum EventLoopPreference {
     /// Event Loop will be selected by the library.
     case indifferent
     /// The delegate will be run on the specified EventLoop (and the Channel if possible).

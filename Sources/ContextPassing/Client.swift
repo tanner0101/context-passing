@@ -2,10 +2,14 @@ import Baggage
 import Logging
 import NIO
 
-protocol Client {
+public protocol Client {
     var eventLoopPreference: EventLoopPreference { get }
     var logger: Logger { get }
     var baggage: BaggageContext { get }
+
+    func eventLoop(prefer eventLoopPreference: EventLoopPreference) -> Client
+    func logging(to logger: Logger) -> Client
+    func tracing(with baggage: BaggageContext) -> Client
 
     func send(
         _ message: Message,
@@ -18,19 +22,19 @@ protocol Client {
 // MARK: Convenience Methods
 
 extension Client {
-    func ping() -> EventLoopFuture<Void> {
+    public func ping() -> EventLoopFuture<Void> {
         self.send(.ping).map {
             assert($0 == .pong)
         }
     }
 
-    func pong() -> EventLoopFuture<Void> {
+    public func pong() -> EventLoopFuture<Void> {
         self.send(.pong).map {
             assert($0 == .ping)
         }
     }
 
-    func send(_ message: Message) -> EventLoopFuture<Message> {
+    public func send(_ message: Message) -> EventLoopFuture<Message> {
         self.send(
             message,
             eventLoopPreference: self.eventLoopPreference,
